@@ -1,0 +1,16 @@
+# Rust
+/src-tauri/target/
+
+# Tauri-generated capability schemas (regenerated each build). The Gradle
+# project under gen/android IS tracked once we customize the manifest /
+# foreground service / icons.
+/src-tauri/gen/schemas/
+
+# Node
+node_modules/
+
+# Local env / secrets
+.env
+.env.*
+*.keystore
+*.jks

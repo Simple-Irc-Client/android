@@ -1,0 +1,29 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Simple-Irc-Client",
+  "version": "0.1.0",
+  "identifier": "com.simpleircclient.android",
+  "build": {
+    "frontendDist": "../../core/dist",
+    "devUrl": "http://localhost:5173"
+  },
+  "app": {
+    "withGlobalTauri": false,
+    "security": {
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' ipc: http://ipc.localhost; img-src 'self' https: data: blob: asset: http://asset.localhost; media-src 'self' https:; font-src 'self' data:; frame-src https://platform.twitter.com https://www.facebook.com https://embed.bsky.app"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.png"
+    ],
+    "category": "SocialNetworking",
+    "shortDescription": "Simple Irc Client",
+    "longDescription": "A simple, modern IRC client."
+  }
+}

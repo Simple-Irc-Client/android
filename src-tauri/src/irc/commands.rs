@@ -1,0 +1,171 @@
+// Shared verbatim with `desktop/src-tauri/src/irc/commands.rs`. Both Tauri
+// shells are thin byte-pipe wrappers over the `sic-irc` crate; the TypeScript
+// kernel in `core` owns the entire IRC conversation. See the plan's "reuse the
+// IRC glue" note for the eventual single-source extraction.
+use serde::{Deserialize, Serialize};
+use sic_irc::{Encoding, IrcClient, IrcClientOptions, IrcEvent};
+use tauri::ipc::Channel;
+use tauri::{AppHandle, Manager, State};
+use uuid::Uuid;
+
+use super::state::{ConnectionId, IrcState};
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConnectArgs {
+    pub host: String,
+    pub port: u16,
+    #[serde(default)]
+    pub tls: bool,
+    pub encoding: Option<String>,
+}
+
+#[derive(Debug, Serialize, Clone)]
+#[serde(tag = "type", rename_all = "camelCase")]
+pub enum ClientEvent {
+    SocketConnected,
+    Raw { line: String },
+    Closed,
+    Error { message: String },
+}
+
+impl From<IrcEvent> for ClientEvent {
+    fn from(e: IrcEvent) -> Self {
+        match e {
+            IrcEvent::SocketConnected => ClientEvent::SocketConnected,
+            IrcEvent::Raw { line } => ClientEvent::Raw { line },
+            IrcEvent::Closed => ClientEvent::Closed,
+            IrcEvent::Error(message) => ClientEvent::Error { message },
+        }
+    }
+}
+
+#[tauri::command]
+pub async fn irc_connect(
+    app: AppHandle,
+    state: State<'_, IrcState>,
+    options: ConnectArgs,
+    on_event: Channel<ClientEvent>,
+) -> Result<ConnectionId, String> {
+    let mut opts = IrcClientOptions::new(options.host, options.port);
+    opts.tls = options.tls;
+    if let Some(enc) = options.encoding.as_deref() {
+        opts.encoding = match enc.to_ascii_lowercase().as_str() {
+            "latin1" | "binary" => Encoding::Latin1,
+            _ => Encoding::Utf8,
+        };
+    }
+    // The Rust driver is a pure byte pipe. The TypeScript kernel owns the
+    // entire IRC conversation for both the WebSocket and Tauri transports —
+    // registration (CAP LS / NICK / USER / CAP REQ / SASL / CAP END), replying
+    // to server PINGs, and connection-liveness policy. There is nothing else to
+    // configure here.
+
+    let (client, mut rx) = IrcClient::connect(opts);
+    let id: ConnectionId = Uuid::new_v4().to_string();
+
+    state.connections.lock().await.insert(id.clone(), client);
+
+    let app_for_task = app.clone();
+    let id_for_cleanup = id.clone();
+    tokio::spawn(async move {
+        // `on_event` is created on the frontend (with its handler attached)
+        // *before* `irc_connect` is invoked, so the receiving end is live
+        // before this command — and therefore before the driver task — even
+        // starts. Anything the driver emits in the gap before this loop
+        // reaches `rx.recv()` is held in the bounded `mpsc` channel inside
+        // `IrcClient` (backpressured, never dropped). Together that closes
+        // the old race where events emitted before the renderer subscribed
+        // were lost.
+        while let Some(event) = rx.recv().await {
+            let is_terminal = matches!(event, IrcEvent::Closed);
+            let payload: ClientEvent = event.into();
+            let _ = on_event.send(payload);
+            if is_terminal {
+                break;
+            }
+        }
+        // Drop the handle from the connection map so the renderer doesn't see
+        // a stale id after the underlying socket is gone.
+        if let Some(state) = app_for_task.try_state::<IrcState>() {
+            state.connections.lock().await.remove(&id_for_cleanup);
+        }
+    });
+
+    Ok(id)
+}
+
+#[tauri::command]
+pub async fn irc_send(
+    state: State<'_, IrcState>,
+    id: ConnectionId,
+    line: String,
+) -> Result<(), String> {
+    let conns = state.connections.lock().await;
+    let client = conns
+        .get(&id)
+        .ok_or_else(|| format!("unknown connection: {id}"))?;
+    client.send(line).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn irc_quit(
+    state: State<'_, IrcState>,
+    id: ConnectionId,
+    message: Option<String>,
+) -> Result<(), String> {
+    let client = {
+        let mut conns = state.connections.lock().await;
+        conns
+            .remove(&id)
+            .ok_or_else(|| format!("unknown connection: {id}"))?
+    };
+    client.quit(message).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn irc_disconnect(state: State<'_, IrcState>, id: ConnectionId) -> Result<(), String> {
+    let client = {
+        let mut conns = state.connections.lock().await;
+        conns
+            .remove(&id)
+            .ok_or_else(|| format!("unknown connection: {id}"))?
+    };
+    client.disconnect().await.map_err(|e| e.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ClientEvent;
+
+    // Locks the JS payload contract in `core/src/network/irc/tauriTransport.ts`.
+    // The driver only emits inbound lines now (no outbound echo), so a Raw event
+    // is just `{ type, line }`.
+    #[test]
+    fn raw_event_serializes_to_type_and_line() {
+        let json = serde_json::to_string(&ClientEvent::Raw {
+            line: ":srv 001 me :hi".into(),
+        })
+        .unwrap();
+        assert_eq!(json, r#"{"type":"raw","line":":srv 001 me :hi"}"#);
+    }
+
+    #[test]
+    fn variant_tags_are_camelcase() {
+        assert_eq!(
+            serde_json::to_string(&ClientEvent::SocketConnected).unwrap(),
+            r#"{"type":"socketConnected"}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&ClientEvent::Closed).unwrap(),
+            r#"{"type":"closed"}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&ClientEvent::Error {
+                message: "boom".into()
+            })
+            .unwrap(),
+            r#"{"type":"error","message":"boom"}"#
+        );
+    }
+}

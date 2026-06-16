@@ -1,0 +1,33 @@
+[package]
+name = "simple-irc-client-android"
+version = "0.1.0"
+description = "Simple Irc Client for Android"
+authors = ["Piotr Luczko <piotr.luczko@gmail.com>"]
+license = "AGPL-3.0-or-later"
+edition = "2024"
+
+# The mobile entry point is exposed as a C ABI symbol loaded by the generated
+# Android (Gradle/JNI) project, so a `cdylib` is mandatory here. `staticlib`
+# and `rlib` keep desktop-style `cargo build`/tests working too.
+[lib]
+name = "simple_irc_client_android_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-clipboard-manager = "2"
+tauri-plugin-notification = "2"
+tauri-plugin-opener = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["sync"] }
+uuid = { version = "1", features = ["v4"] }
+# Shared, transport-only IRC crate — the same one the desktop app uses.
+sic-irc = { path = "../../network-rs" }
+
+[features]
+# Default Tauri custom-protocol feature parity with desktop.
+custom-protocol = ["tauri/custom-protocol"]

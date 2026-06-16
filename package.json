@@ -1,0 +1,36 @@
+{
+  "name": "simple-irc-client-android",
+  "productName": "simple-irc-client-android",
+  "version": "0.1.0",
+  "description": "Simple Irc Client for Android",
+  "type": "module",
+  "scripts": {
+    "tauri": "tauri",
+    "core:build": "pnpm --dir ../core install --ignore-workspace && pnpm --dir ../core build",
+    "android:init": "tauri android init",
+    "android:dev": "tauri android dev",
+    "android:build": "tauri android build"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Simple-Irc-Client/android.git"
+  },
+  "author": {
+    "name": "Piotr Luczko",
+    "email": "piotr.luczko@gmail.com"
+  },
+  "license": "AGPL-3.0-or-later",
+  "packageManager": "pnpm@11.5.0",
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2.11.0",
+    "@tauri-apps/plugin-clipboard-manager": "^2.3.2",
+    "@tauri-apps/plugin-notification": "^2.3.1",
+    "@tauri-apps/plugin-opener": "^2.5.4"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.11.1"
+  }
+}
