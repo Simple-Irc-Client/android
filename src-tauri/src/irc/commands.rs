@@ -1,7 +1,4 @@
-// Shared verbatim with `desktop/src-tauri/src/irc/commands.rs`. Both Tauri
-// shells are thin byte-pipe wrappers over the `sic-irc` crate; the TypeScript
-// kernel in `core` owns the entire IRC conversation. See the plan's "reuse the
-// IRC glue" note for the eventual single-source extraction.
+// Keep in sync with `desktop/src-tauri/src/irc/commands.rs`.
 use serde::{Deserialize, Serialize};
 use sic_irc::{Encoding, IrcClient, IrcClientOptions, IrcEvent};
 use tauri::ipc::Channel;
